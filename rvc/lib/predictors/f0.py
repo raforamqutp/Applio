@@ -3,7 +3,13 @@ import json
 import torch
 
 from rvc.lib.predictors.RMVPE import RMVPE0Predictor
-from swift_f0 import FRAME_PERIOD, SwiftF0
+
+try:
+    from swift_f0 import FRAME_PERIOD, SwiftF0
+except ImportError:
+    FRAME_PERIOD = 0.016
+    SwiftF0 = None
+
 from torchfcpe import spawn_infer_model_from_pt
 import torchcrepe
 import numpy as np
@@ -188,6 +194,10 @@ class FCPE:
 
 class Swift:
     def __init__(self, device=None, sample_rate=16000, hop_size=160):
+        if SwiftF0 is None:
+            raise ImportError(
+                "SwiftF0 is not installed. Please install it with: pip install swift-f0"
+            )
         self.device = device
         self.sample_rate = sample_rate
         self.hop_size = hop_size
