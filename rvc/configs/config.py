@@ -48,11 +48,16 @@ class Config:
         else:
             self.device = "cpu"
 
-        # Configuration for 6GB GPU memory
-        x_pad, x_query, x_center, x_max = (1, 6, 38, 41)
-        if self.gpu_mem is not None and self.gpu_mem <= 4:
-            # Configuration for 5GB GPU memory
+        # Adaptive VRAM slicing
+        if self.gpu_mem is not None and self.gpu_mem >= 10:
+            # Optimized for 10GB-16GB GPUs (e.g. RTX 4070 Super)
+            x_pad, x_query, x_center, x_max = (1, 8, 55, 60)
+        elif self.gpu_mem is not None and self.gpu_mem <= 4:
+            # Configuration for <=4GB GPU memory
             x_pad, x_query, x_center, x_max = (1, 5, 30, 32)
+        else:
+            # Configuration for 6GB-8GB GPU memory
+            x_pad, x_query, x_center, x_max = (1, 6, 38, 41)
 
         return x_pad, x_query, x_center, x_max
 
@@ -62,6 +67,14 @@ class Config:
         self.gpu_mem = torch.cuda.get_device_properties(i_device).total_memory // (
             1024**3
         )
+        # Enable Tensor Core acceleration and cuDNN auto-tuner globally
+        try:
+            torch.set_float32_matmul_precision("high")
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            torch.backends.cudnn.benchmark = True
+        except Exception:
+            pass
 
 
 def max_vram_gpu(gpu):
