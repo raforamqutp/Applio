@@ -195,6 +195,10 @@ class Pipeline:
         self.f0_mel_max = 1127 * np.log(1 + self.f0_max / 700)
         self.device = config.device
         self.autotune = Autotune()
+        self.cached_file_index = None
+        self.cached_index = None
+        self.cached_big_npy = None
+        self.model_rmvpe = None
 
     def get_f0(
         self,
@@ -232,11 +236,11 @@ class Pipeline:
             f0 = model.get_f0(x, self.f0_min, self.f0_max, p_len, "tiny")
             del model
         elif f0_method == "rmvpe":
-            model = RMVPE(
-                device=self.device, sample_rate=self.sample_rate, hop_size=self.window
-            )
-            f0 = model.get_f0(x, filter_radius=0.03)
-            del model
+            if getattr(self, "model_rmvpe", None) is None:
+                self.model_rmvpe = RMVPE(
+                    device=self.device, sample_rate=self.sample_rate, hop_size=self.window
+                )
+            f0 = self.model_rmvpe.get_f0(x, filter_radius=0.03)
         elif f0_method == "fcpe":
             model = FCPE(
                 device=self.device, sample_rate=self.sample_rate, hop_size=self.window
@@ -433,12 +437,22 @@ class Pipeline:
             f0_autotune: Whether to apply autotune to the F0 contour.
         """
         if file_index != "" and os.path.exists(file_index) and index_rate > 0:
-            try:
-                index = faiss.read_index(file_index)
-                big_npy = index.reconstruct_n(0, index.ntotal)
-            except Exception as error:
-                print(f"An error occurred reading the FAISS index: {error}")
-                index = big_npy = None
+            if (
+                getattr(self, "cached_file_index", None) == file_index
+                and getattr(self, "cached_index", None) is not None
+            ):
+                index = self.cached_index
+                big_npy = self.cached_big_npy
+            else:
+                try:
+                    index = faiss.read_index(file_index)
+                    big_npy = index.reconstruct_n(0, index.ntotal)
+                    self.cached_file_index = file_index
+                    self.cached_index = index
+                    self.cached_big_npy = big_npy
+                except Exception as error:
+                    print(f"An error occurred reading the FAISS index: {error}")
+                    index = big_npy = None
         else:
             index = big_npy = None
         audio = signal.filtfilt(bh, ah, audio)
