@@ -214,8 +214,9 @@ class Realtime_Pipeline:
         if self.f0_method == "rmvpe":
             f0 = self.f0_model.get_f0(x, filter_radius=0.03)
         elif self.f0_method == "fcpe":
+            x_clamped = torch.clamp(x.float(), -1.0, 1.0)
             f0 = self.f0_model.model.infer(
-                x.float().to(self.device).unsqueeze(0),
+                x_clamped.to(self.device).unsqueeze(0),
                 sr=self.f0_model.sample_rate,
                 decoder_mode="local_argmax",
                 threshold=0.006,
