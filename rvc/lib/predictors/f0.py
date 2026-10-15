@@ -177,9 +177,11 @@ class FCPE:
         if not torch.is_tensor(x):
             x = torch.from_numpy(x)
 
+        x = torch.clamp(x.float(), -1.0, 1.0)
+
         f0 = (
             self.model.infer(
-                x.float().to(self.device).unsqueeze(0),
+                x.to(self.device).unsqueeze(0),
                 sr=self.sample_rate,
                 decoder_mode="local_argmax",
                 threshold=filter_radius,

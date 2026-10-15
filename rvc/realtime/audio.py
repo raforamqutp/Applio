@@ -135,6 +135,7 @@ class Audio:
         monitor: bool = False,
     ):
         self.callbacks = callbacks
+        self.output_queue = Queue()
         self.mon_queue = Queue()
         self.stream = None
         self.input_stream = None
@@ -196,7 +197,9 @@ class Audio:
         try:
             out_wav = self.process_data_with_time(indata)
 
-            self.mon_queue.put(out_wav)
+            self.output_queue.put(out_wav)
+            if self.use_monitor:
+                self.mon_queue.put(out_wav)
         except Exception as error:
             print(f"An error occurred while running the audio stream: {error}")
             print(traceback.format_exc())
@@ -219,17 +222,27 @@ class Audio:
             print(f"An error occurred while running the audio stream: {error}")
             print(traceback.format_exc())
 
-    def audio_queue(self, outdata: np.ndarray, gain: float):
+    def audio_queue(self, q: Queue, outdata: np.ndarray, gain: float):
         try:
-            mon_wav = self.mon_queue.get()
+            try:
+                mon_wav = q.get(timeout=0.05)
+            except Exception:
+                outdata.fill(0)
+                return
 
-            while self.mon_queue.qsize() > 0:
-                self.mon_queue.get()
+            while q.qsize() > 2:
+                mon_wav = q.get_nowait()
 
             output_channels = outdata.shape[1]
-            outdata[:] = (
+            wav_repeated = (
                 np.repeat(mon_wav, output_channels).reshape(-1, output_channels) * gain
             )
+            target_len = outdata.shape[0]
+            if wav_repeated.shape[0] >= target_len:
+                outdata[:] = wav_repeated[:target_len]
+            else:
+                outdata[: wav_repeated.shape[0]] = wav_repeated
+                outdata[wav_repeated.shape[0] :].fill(0)
         except Exception as error:
             print(f"An error occurred while running the audio queue: {error}")
             print(traceback.format_exc())
@@ -272,7 +285,7 @@ class Audio:
             )
             self.output_stream = sd.OutputStream(
                 callback=lambda outdata, frames, times, status: self.audio_queue(
-                    outdata, self.output_audio_gain
+                    self.output_queue, outdata, self.output_audio_gain
                 ),
                 latency="low",
                 dtype=np.float32,
@@ -300,7 +313,7 @@ class Audio:
         if self.use_monitor:
             self.monitor = sd.OutputStream(
                 callback=lambda outdata, frames, times, status: self.audio_queue(
-                    outdata, self.monitor_audio_gain
+                    self.mon_queue, outdata, self.monitor_audio_gain
                 ),
                 latency="low",
                 dtype=np.float32,
